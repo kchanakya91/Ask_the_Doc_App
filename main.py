@@ -6,6 +6,7 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.chains import RetrievalQA
 import fitz  # PyMuPDF
 from docx import Document
+import os
 
 def extract_text_from_file(uploaded_file, file_type):
     if file_type == 'txt':
@@ -21,19 +22,20 @@ def extract_text_from_file(uploaded_file, file_type):
         return ""
 
 def generate_response(uploaded_file, file_type, openai_api_key, query_text):
+    os.environ["OPENAI_API_KEY"] = openai_api_key
+
     if uploaded_file is not None:
         raw_text = extract_text_from_file(uploaded_file, file_type)
         documents = [raw_text]
         text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
         texts = text_splitter.create_documents(documents)
-        embeddings = OpenAIEmbeddings(openai_api_key=openai_api_key)
+        embeddings = OpenAIEmbeddings()
         db = Chroma.from_documents(texts, embeddings)
         retriever = db.as_retriever()
-        qa = RetrievalQA.from_chain_type(llm=OpenAI(openai_api_key=openai_api_key), chain_type='stuff', retriever=retriever)
+        qa = RetrievalQA.from_chain_type(llm=OpenAI(), chain_type='stuff', retriever=retriever)
         return qa.run(query_text)
     else:
-        # Fallback to plain LLM response when no document is uploaded
-        llm = OpenAI(openai_api_key=openai_api_key)
+        llm = OpenAI()
         return llm(query_text)
 
 # Streamlit UI
