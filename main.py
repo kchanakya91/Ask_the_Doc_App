@@ -23,9 +23,16 @@ def extract_text_from_file(uploaded_file, file_type):
 
 # Main logic to generate a response from file or directly via LLM
 def generate_response(uploaded_file, file_type, openai_api_key, query_text):
+    import logging
+    logging.basicConfig(level=logging.DEBUG)
+    
+    # Set environment variable for API key
     os.environ["OPENAI_API_KEY"] = openai_api_key
+    logging.debug(f"API Key set: {openai_api_key[:4]}...")  # Log partial key for security
 
     if uploaded_file is not None:
+        if file_type not in ['txt', 'pdf', 'docx']:
+            raise ValueError("Unsupported file type. Use txt, pdf, or docx.")
         raw_text = extract_text_from_file(uploaded_file, file_type)
         documents = [raw_text]
         text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
@@ -33,10 +40,14 @@ def generate_response(uploaded_file, file_type, openai_api_key, query_text):
         embeddings = OpenAIEmbeddings()
         db = Chroma.from_documents(texts, embeddings)
         retriever = db.as_retriever()
-        qa = RetrievalQA.from_chain_type(llm=OpenAI(), chain_type='stuff', retriever=retriever)
+        qa = RetrievalQA.from_chain_type(
+            llm=OpenAI(model="gpt-3.5-turbo-instruct", temperature=0, api_key=openai_api_key),
+            chain_type='stuff',
+            retriever=retriever
+        )
         return qa.run(query_text)
     else:
-        llm = OpenAI()
+        llm = OpenAI(model="gpt-3.5-turbo-instruct", temperature=0, api_key=openai_api_key)
         return llm(query_text)
 
 # Streamlit UI layout
