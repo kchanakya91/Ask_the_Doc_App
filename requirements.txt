@@ -1,6 +1,9 @@
-streamlit==1.31.0
+streamlit==1.31.1
 langchain==0.2.0
-langchain-openai==0.1.0
+langchain-openai==0.1.8
 chromadb==0.4.24
 tiktoken==0.7.0
+PyMuPDF==1.24.0
+python-docx==1.1.0
 pydantic==1.10.12
+rich==13.7.1
