@@ -1,38 +1,65 @@
 import streamlit as st
-from langchain import OpenAI
-from langchain.docstore.document import Document
+import os
+import fitz  # PyMuPDF
+from docx import Document
+
+from langchain_openai import OpenAI
+from langchain_openai.embeddings import OpenAIEmbeddings
+from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import CharacterTextSplitter
-from langchain.chains.summarize import load_summarize_chain
+from langchain.chains import RetrievalQA
 
-def generate_response(txt):
-    # Instantiate the LLM model
-    llm = OpenAI(temperature=0, openai_api_key=openai_api_key)
-    # Split text
-    text_splitter = CharacterTextSplitter()
-    texts = text_splitter.split_text(txt)
-    # Create multiple documents
-    docs = [Document(page_content=t) for t in texts]
-    # Text summarization
-    chain = load_summarize_chain(llm, chain_type='map_reduce')
-    return chain.run(docs)
+# File text extraction logic
+def extract_text_from_file(uploaded_file, file_type):
+    if file_type == 'txt':
+        return uploaded_file.read().decode()
+    elif file_type == 'pdf':
+        doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+        return "\n".join([page.get_text() for page in doc])
+    elif file_type == 'docx':
+        doc = Document(uploaded_file)
+        return "\n".join([para.text for para in doc.paragraphs])
+    return ""
 
-# Page title
-st.set_page_config(page_title='🦜🔗 Text Summarization App')
-st.title('🦜🔗 Text Summarization App')
+# Main logic to generate a response from file or directly via LLM
+def generate_response(uploaded_file, file_type, openai_api_key, query_text):
+    os.environ["OPENAI_API_KEY"] = openai_api_key
 
-# Text input
-txt_input = st.text_area('Enter your text', '', height=200)
+    if uploaded_file is not None:
+        raw_text = extract_text_from_file(uploaded_file, file_type)
+        documents = [raw_text]
+        text_splitter = CharacterTextSplitter(chunk_size=1000, chunk_overlap=0)
+        texts = text_splitter.create_documents(documents)
+        embeddings = OpenAIEmbeddings()
+        db = Chroma.from_documents(texts, embeddings)
+        retriever = db.as_retriever()
+        qa = RetrievalQA.from_chain_type(llm=OpenAI(), chain_type='stuff', retriever=retriever)
+        return qa.run(query_text)
+    else:
+        llm = OpenAI()
+        return llm(query_text)
 
-# Form to accept user's text input for summarization
+# Streamlit UI layout
+st.set_page_config(page_title='🦜🔗 Ask the Doc App')
+st.title('🦜🔗 Ask the Doc App')
+
+uploaded_file = st.file_uploader('Upload an article (optional)', type=['txt', 'pdf', 'docx'])
+query_text = st.text_input('Enter your question:', placeholder='Ask a question about the document or general topic')
+openai_api_key = st.text_input('OpenAI API Key', type='password')
+
 result = []
-with st.form('summarize_form', clear_on_submit=True):
-    openai_api_key = st.text_input('OpenAI API Key', type = 'password', disabled=not txt_input)
+with st.form('qa_form', clear_on_submit=True):
     submitted = st.form_submit_button('Submit')
-    if submitted and openai_api_key.startswith('sk-'):
-        with st.spinner('Calculating...'):
-            response = generate_response(txt_input)
-            result.append(response)
-            del openai_api_key
+    if submitted:
+        if not openai_api_key.startswith('sk-'):
+            st.warning("⚠️ Please enter a valid OpenAI API key starting with 'sk-'")
+        elif not query_text.strip():
+            st.warning("⚠️ Please enter a question to ask")
+        else:
+            with st.spinner("Processing..."):
+                file_type = uploaded_file.name.split('.')[-1] if uploaded_file else None
+                response = generate_response(uploaded_file, file_type, openai_api_key, query_text)
+                result.append(response)
 
-if len(result):
-    st.info(response)
+if result:
+    st.info(result[-1])
