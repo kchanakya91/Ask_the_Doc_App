@@ -1,26 +1,27 @@
 import streamlit as st
+import os
+import fitz  # PyMuPDF
+from docx import Document
+
 from langchain_openai import OpenAI
 from langchain_openai.embeddings import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain.text_splitter import CharacterTextSplitter
 from langchain.chains import RetrievalQA
-import fitz  # PyMuPDF
-from docx import Document
-import os
 
+# File text extraction logic
 def extract_text_from_file(uploaded_file, file_type):
     if file_type == 'txt':
         return uploaded_file.read().decode()
     elif file_type == 'pdf':
         doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
-        text = "\n".join([page.get_text() for page in doc])
-        return text
+        return "\n".join([page.get_text() for page in doc])
     elif file_type == 'docx':
         doc = Document(uploaded_file)
         return "\n".join([para.text for para in doc.paragraphs])
-    else:
-        return ""
+    return ""
 
+# Main logic to generate a response from file or directly via LLM
 def generate_response(uploaded_file, file_type, openai_api_key, query_text):
     os.environ["OPENAI_API_KEY"] = openai_api_key
 
@@ -38,29 +39,27 @@ def generate_response(uploaded_file, file_type, openai_api_key, query_text):
         llm = OpenAI()
         return llm(query_text)
 
-# Streamlit UI
+# Streamlit UI layout
 st.set_page_config(page_title='🦜🔗 Ask the Doc App')
 st.title('🦜🔗 Ask the Doc App')
 
-# Allow txt, pdf, docx
 uploaded_file = st.file_uploader('Upload an article (optional)', type=['txt', 'pdf', 'docx'])
-
-# Inputs (enabled always now)
-query_text = st.text_input('Enter your question:', placeholder='Type your question here.')
+query_text = st.text_input('Enter your question:', placeholder='Ask a question about the document or general topic')
 openai_api_key = st.text_input('OpenAI API Key', type='password')
 
-# Form and submission
 result = []
-with st.form('myform', clear_on_submit=True):
+with st.form('qa_form', clear_on_submit=True):
     submitted = st.form_submit_button('Submit')
-    if submitted and openai_api_key.startswith('sk-') and query_text:
-        with st.spinner('Generating response...'):
-            file_type = uploaded_file.name.split('.')[-1] if uploaded_file else None
-            response = generate_response(uploaded_file, file_type, openai_api_key, query_text)
-            result.append(response)
-            del openai_api_key
-    elif submitted and not openai_api_key.startswith('sk-'):
-        st.warning("Please enter a valid OpenAI API key starting with 'sk-'.")
+    if submitted:
+        if not openai_api_key.startswith('sk-'):
+            st.warning("⚠️ Please enter a valid OpenAI API key starting with 'sk-'")
+        elif not query_text.strip():
+            st.warning("⚠️ Please enter a question to ask")
+        else:
+            with st.spinner("Processing..."):
+                file_type = uploaded_file.name.split('.')[-1] if uploaded_file else None
+                response = generate_response(uploaded_file, file_type, openai_api_key, query_text)
+                result.append(response)
 
 if result:
     st.info(result[-1])
